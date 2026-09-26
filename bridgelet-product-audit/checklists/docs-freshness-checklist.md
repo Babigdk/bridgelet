@@ -71,6 +71,17 @@ The documentation lead is responsible for coordinating each review cycle, assign
 - **PDF Pair Check**:
   - [ ] Confirm `integration-guide.pdf` matches the current `.mdx` source (trigger the [PDF artifact freshness spot check](../runbooks/pdf-artifact-freshness-spot-check.md) if discrepancies are found)
 
+### 6. `docs/analytics-spec.md`
+- **Document Owner**: Product Analytics Team
+- **Last Reviewed Date**: _______________
+- **Review Cadence**: Review alongside every analytics change, at minimum once per bi-annual cycle
+- **Review Items**:
+  - [ ] Every event tracked in code is documented in the spec (no undocumented additions)
+  - [ ] No renamed, changed, or removed events remain in the spec
+  - [ ] Event payloads and base-payload fields match current implementation
+  - [ ] Draft/Status metadata is current
+- **Drift Risk Note**: The spec is large (919 lines) and has known drift scenarios (events added/renamed/changed/removed in code without a spec update), so treat it as an explicitly tracked document rather than catching drift via ad hoc audits
+
 ---
 
 ## Cross-Cutting Review Items (All Documents)
