@@ -5,6 +5,8 @@
 **Created:** March 2026
 **Based On:** `bridgelet-frd-ui-ux.md`, `ROADMAP.md`, `FRONTEND_TECHNICAL_SPEC.md`
 
+> **Implementation status:** Implementation compliance has **not** been verified. Treat this document as the intended design for Bridgelet's analytics instrumentation, not as a source of truth. See `bridgelet-product-audit/postmortems/analytics-spec-vs-implementation-unverified.md`.
+
 ---
 
 ## Table of Contents
