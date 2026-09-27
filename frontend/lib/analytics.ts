@@ -1,31 +1,40 @@
 // #118 – Privacy-respecting analytics events (Plausible-compatible, no PII)
+// Event names must match `docs/analytics-spec.md` `#### \`Event Name\`` headings exactly.
 type ClaimEvent =
-  | 'claim_page_viewed'
-  | 'claim_initiated'
-  | 'claim_success'
-  | 'claim_error'
-  | 'Error Displayed'
-  | 'Send Form Completed'
-  | 'Payment Confirmation Viewed'
-  | 'Payment Confirmed'
-  | 'Payment Created'
-  | 'Claim Link Copied'
-  | 'Claim Link Shared'
-  | 'Claim Page Opened'
-  | 'Payment Details Viewed'
   | 'Page Viewed'
   | 'Send Form Viewed'
+  | 'Send Form Started'
+  | 'Send Form Field Changed'
+  | 'Send Form Completed'
+  | 'Payment Confirmation Viewed'
+  | 'Wallet Connected'
+  | 'Wallet Connection Failed'
+  | 'Payment Confirmed'
+  | 'Payment Created'
+  | 'Payment Creation Failed'
+  | 'Payment Success Viewed'
+  | 'Claim Link Copied'
+  | 'Claim Link Shared'
+  | 'Dashboard Viewed'
+  | 'Dashboard Filter Applied'
+  | 'Payment Details Viewed'
+  | 'Payment Cancelled'
+  | 'Funds Reclaimed'
+  | 'Claim Page Opened'
   | 'Claim Verified'
   | 'Claim CTA Clicked'
-  | 'Retry Clicked'
+  | 'Wallet Address Screen Viewed'
+  | 'Wallet Address Entered'
+  | 'Wallet Address Validation Failed'
+  | 'Claim Confirmation Viewed'
+  | 'Claim Submitted'
+  | 'Claim Succeeded'
   | 'Claim Failed'
   | 'Claim Success Viewed'
   | 'Sender Signup CTA Clicked'
   | 'Explorer Link Clicked'
-  | 'Wallet Address Validation Failed'
-  | 'Claim Confirmation Viewed'
-  | 'Claim Submitted'
-  | 'Claim Succeeded';
+  | 'Error Displayed'
+  | 'Retry Clicked';
 
 type EventProps = Record<string, string | number | boolean | null>;
 
@@ -562,10 +571,33 @@ export function daysRemainingUntil(iso: string): number | undefined {
 // ─── Public analytics surface ─────────────────────────────────────────────────
 
 export const analytics = {
-  claimPageViewed: () => track('claim_page_viewed'),
-  claimInitiated: () => track('claim_initiated'),
-  claimSuccess: () => track('claim_success'),
-  claimError: (reason: string) => track('claim_error', { reason }),
+  claimPageViewed: ({ claimId, entryChannel }: { claimId: string; entryChannel: ClaimEntryChannel }) =>
+    track('Claim Page Opened', {
+      journey: 'recipient',
+      claim_id: claimId,
+      entry_channel: entryChannel,
+    }),
+  claimInitiated: ({ claimId, assetType }: { claimId: string; assetType?: string }) =>
+    track('Claim CTA Clicked', {
+      journey: 'recipient',
+      claim_id: claimId,
+      ...(assetType ? { asset_type: assetType } : {}),
+    }),
+  claimSuccess: ({ claimId, assetType }: { claimId: string; assetType?: string }) =>
+    track('Claim Succeeded', {
+      journey: 'recipient',
+      claim_id: claimId,
+      ...(assetType ? { asset_type: assetType } : {}),
+    }),
+  claimError: ({ claimId, assetType, errorCode = 'unknown', errorType, attemptNumber }: ClaimFailedProps) =>
+    track('Claim Failed', {
+      journey: 'recipient',
+      claim_id: claimId,
+      ...(assetType ? { asset_type: assetType } : {}),
+      error_code: errorCode,
+      error_type: errorType,
+      attempt_number: attemptNumber,
+    }),
   sendFormCompleted: ({
     assetType,
     expiryDays,
