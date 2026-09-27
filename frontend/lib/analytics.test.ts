@@ -273,10 +273,14 @@ describe('track base payload merge', () => {
     (window as unknown as { plausible?: ReturnType<typeof plausibleMock> }).plausible =
       plausibleMock();
 
-    analytics.claimPageViewed();
-    analytics.claimInitiated();
-    analytics.claimSuccess();
-    analytics.claimError('sweep_failed');
+    analytics.claimPageViewed({ claimId: 'tok_123', entryChannel: 'direct' });
+    analytics.claimInitiated({ claimId: 'tok_123' });
+    analytics.claimSuccess({ claimId: 'tok_123' });
+    analytics.claimError({
+      claimId: 'tok_123',
+      errorType: 'transaction_failed',
+      attemptNumber: 1,
+    });
     analytics.claimVerified({
       claimId: 'tok_123',
       verificationTimeMs: 42,
@@ -329,7 +333,11 @@ describe('track base payload merge', () => {
     (window as unknown as { plausible?: ReturnType<typeof plausibleMock> }).plausible =
       plausibleMock();
 
-    analytics.claimError('network_error');
+    analytics.claimError({
+      claimId: 'tok_123',
+      errorType: 'network_error',
+      attemptNumber: 1,
+    });
 
     const call = (window as unknown as { plausible: ReturnType<typeof plausibleMock> }).plausible
       .mock.calls[0]!;
@@ -338,7 +346,7 @@ describe('track base payload merge', () => {
         app_version: expect.any(String),
         user_agent: expect.any(String),
         device_type: expect.stringMatching(/^(mobile|tablet|desktop)$/),
-        reason: 'network_error',
+        error_type: 'network_error',
       }),
     );
     expect(typeof call[1].props.referrer === 'string' || call[1].props.referrer === null).toBe(
@@ -351,7 +359,7 @@ describe('track base payload merge', () => {
     (window as unknown as { plausible?: ReturnType<typeof plausibleMock> }).plausible = plausible;
     vi.stubGlobal('window', undefined);
 
-    expect(() => analytics.claimPageViewed()).not.toThrow();
+    expect(() => analytics.claimPageViewed({ claimId: 'tok_123', entryChannel: 'direct' })).not.toThrow();
     expect(plausible).not.toHaveBeenCalled();
   });
 });
@@ -1590,7 +1598,7 @@ describe('dispatch targets and PostHog fallback', () => {
       plausible;
     (window as unknown as { posthog?: { capture: typeof capture } }).posthog = { capture };
 
-    analytics.claimPageViewed();
+    analytics.claimPageViewed({ claimId: 'tok_123', entryChannel: 'direct' });
 
     expect(plausible).toHaveBeenCalledTimes(1);
     expect(capture).not.toHaveBeenCalled();
