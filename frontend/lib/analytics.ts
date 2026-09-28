@@ -1,3 +1,9 @@
+import {
+  JOURNEY,
+  buildBasePayload as buildSharedBasePayload,
+  type Journey,
+} from '@bridgelet/analytics';
+
 // #118 – Privacy-respecting analytics events (Plausible-compatible, no PII)
 // Event names must match `docs/analytics-spec.md` `#### \`Event Name\`` headings exactly.
 type ClaimEvent =
@@ -72,13 +78,13 @@ export function detectDeviceType(userAgent?: string): DeviceType {
  * without a DOM).
  */
 export function buildBasePayload(): EventProps {
-  return {
-    app_version: appVersion(),
-    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-    device_type: detectDeviceType(),
-    referrer: typeof document !== 'undefined' && document.referrer ? document.referrer : null,
+  return buildSharedBasePayload({
     platform: 'web',
-  };
+    appVersion: appVersion(),
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    deviceType: detectDeviceType(),
+    referrer: typeof document !== 'undefined' && document.referrer ? document.referrer : null,
+  });
 }
 
 // ─── §3.1 Base Payload Identity fields ───────────────────────────────────────
@@ -427,6 +433,9 @@ export function isDntEnabled(header?: string): boolean {
   return raw === '1' || raw === 'yes';
 }
 
+export { JOURNEY };
+export type { Journey };
+
 export type ShareMethod = 'sms' | 'email' | 'whatsapp' | 'qr_code';
 
 export type EntrySource = 'direct' | 'referral' | 'shared_link' | 'unknown';
@@ -471,7 +480,7 @@ interface ClaimCtaClickedProps {
 }
 
 interface ErrorDisplayedProps {
-  journey: 'sender' | 'recipient' | 'shared';
+  journey: Journey;
   /** Claim ID if available; omitted otherwise. */
   claimId?: string | null;
   errorType: ErrorType;
@@ -482,7 +491,7 @@ interface ErrorDisplayedProps {
 }
 
 interface RetryClickedProps {
-  journey: 'sender' | 'recipient' | 'shared';
+  journey: Journey;
   /** Claim ID if available; omitted otherwise. */
   claimId?: string | null;
   /** Error type that triggered the retry prompt. */
@@ -535,7 +544,7 @@ interface SenderSignupCtaClickedProps {
 export type ExplorerSourceScreen = 'claim_success' | 'payment_details';
 
 /** §2.3 journey values for Explorer Link Clicked. */
-export type ExplorerJourney = 'sender' | 'recipient';
+export type ExplorerJourney = Extract<Journey, 'sender' | 'recipient'>;
 
 interface ExplorerLinkClickedProps {
   journey: ExplorerJourney;
