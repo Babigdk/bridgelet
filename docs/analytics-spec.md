@@ -313,6 +313,11 @@ Fired when the sender copies the claim link to clipboard.
 
 Fired when the sender uses a share button (SMS, Email, WhatsApp, QR).
 
+> Required for §8.2 Share Method Distribution KPI: `share_method` must be emitted
+> on every `Claim Link Shared` event to distinguish copy vs. native share-sheet vs.
+> specific social channels. The value is one of `"sms"`, `"email"`, `"whatsapp"`,
+> or `"qr_code"`.
+
 | Property | Type | Value / Description |
 |----------|------|---------------------|
 | `journey` | string | `"sender"` |
