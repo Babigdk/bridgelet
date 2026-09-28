@@ -16,9 +16,11 @@ import {
   getAnonymousId,
   getSessionId,
   isDoNotTrackEnabled,
+  JOURNEY,
   type ClaimFailedErrorType,
   type ExplorerJourney,
   type ExplorerSourceScreen,
+  type Journey,
   VALID_EXPIRY_WINDOWS,
   type ValidationError,
 } from '@/lib/analytics';
@@ -38,6 +40,15 @@ function stubNavigatorWith(dntProperties: Record<string, unknown>): void {
     ...dntProperties,
   });
 }
+
+describe('journey taxonomy', () => {
+  it('exposes the shared sender/recipient/shared journey values', () => {
+    const values: Journey[] = ['sender', 'recipient', 'shared'];
+
+    expect(JOURNEY).toEqual({ sender: 'sender', recipient: 'recipient', shared: 'shared' });
+    expect(values).toHaveLength(3);
+  });
+});
 
 describe('appVersion', () => {
   it('reads the build-time NEXT_PUBLIC_APP_VERSION when set', () => {
