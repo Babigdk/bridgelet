@@ -2,15 +2,6 @@ import Constants from "expo-constants";
 
 const IS_DEV = Constants.appOwnership === "expo" || __DEV__;
 
-export const JOURNEY = {
-  sender: "sender",
-  recipient: "recipient",
-  shared: "shared",
-} as const;
-
-export type Journey = (typeof JOURNEY)[keyof typeof JOURNEY];
-export type ExplorerJourney = Extract<Journey, "sender" | "recipient">;
-
 // Event names must match `docs/analytics-spec.md` `#### \`Event Name\`` headings exactly.
 export type AnalyticsEvent =
   | { name: "Claim Page Opened"; params: { claim_id: string; entry_channel: string } }
@@ -25,9 +16,9 @@ export type AnalyticsEvent =
   | { name: "Claim Failed"; params: { claim_id: string; asset_type?: string; error_code?: string; error_type: string; attempt_number: number } }
   | { name: "Claim Success Viewed"; params: { claim_id: string; asset_type?: string } }
   | { name: "Sender Signup CTA Clicked"; params: { claim_id: string } }
-  | { name: "Explorer Link Clicked"; params: { journey: ExplorerJourney; claim_id: string; source_screen: string } }
-  | { name: "Error Displayed"; params: { journey: Journey; claim_id?: string | null; error_type: string; error_code?: string; source_screen: string } }
-  | { name: "Retry Clicked"; params: { journey: Journey; claim_id?: string | null; error_type: string; attempt_number: number } };
+  | { name: "Explorer Link Clicked"; params: { journey: "sender" | "recipient"; claim_id: string; source_screen: string } }
+  | { name: "Error Displayed"; params: { journey: "sender" | "recipient" | "shared"; claim_id?: string | null; error_type: string; error_code?: string; source_screen: string } }
+  | { name: "Retry Clicked"; params: { journey: "sender" | "recipient" | "shared"; claim_id?: string | null; error_type: string; attempt_number: number } };
 
 export function track(event: AnalyticsEvent): void {
   if (IS_DEV) {

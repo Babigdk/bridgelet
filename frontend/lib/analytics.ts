@@ -427,14 +427,6 @@ export function isDntEnabled(header?: string): boolean {
   return raw === '1' || raw === 'yes';
 }
 
-export const JOURNEY = {
-  sender: 'sender',
-  recipient: 'recipient',
-  shared: 'shared',
-} as const;
-
-export type Journey = (typeof JOURNEY)[keyof typeof JOURNEY];
-
 export type ShareMethod = 'sms' | 'email' | 'whatsapp' | 'qr_code';
 
 export type EntrySource = 'direct' | 'referral' | 'shared_link' | 'unknown';
@@ -479,7 +471,7 @@ interface ClaimCtaClickedProps {
 }
 
 interface ErrorDisplayedProps {
-  journey: Journey;
+  journey: 'sender' | 'recipient' | 'shared';
   /** Claim ID if available; omitted otherwise. */
   claimId?: string | null;
   errorType: ErrorType;
@@ -490,7 +482,7 @@ interface ErrorDisplayedProps {
 }
 
 interface RetryClickedProps {
-  journey: Journey;
+  journey: 'sender' | 'recipient' | 'shared';
   /** Claim ID if available; omitted otherwise. */
   claimId?: string | null;
   /** Error type that triggered the retry prompt. */
@@ -543,7 +535,7 @@ interface SenderSignupCtaClickedProps {
 export type ExplorerSourceScreen = 'claim_success' | 'payment_details';
 
 /** §2.3 journey values for Explorer Link Clicked. */
-export type ExplorerJourney = Extract<Journey, 'sender' | 'recipient'>;
+export type ExplorerJourney = 'sender' | 'recipient';
 
 interface ExplorerLinkClickedProps {
   journey: ExplorerJourney;
