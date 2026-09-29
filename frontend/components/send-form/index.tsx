@@ -5,25 +5,30 @@ import { ConnectStep } from './steps/connect-step';
 import { ExpiryStep } from './steps/expiry-step';
 import { DetailsStep } from './steps/details-step';
 import { ConfirmStep } from './steps/confirm-step';
+import { analytics } from '@/lib/analytics';
 
 export type SendFormStep = 'connect' | 'expiry' | 'details' | 'confirm';
 
 export interface SendFormState {
   publicKey: string;
   expiresInHours: number;
+  recipientName: string;
   recipientEmail: string;
   amountXlm: string;
   assetCode: string;
   memo: string;
+  expiresIn: number;
 }
 
 const INITIAL_STATE: SendFormState = {
   publicKey: '',
   expiresInHours: 24,
+  recipientName: '',
   recipientEmail: '',
   amountXlm: '',
   assetCode: 'XLM',
   memo: '',
+  expiresIn: 7 * 24 * 60 * 60,
 };
 
 const STEP_ORDER: SendFormStep[] = ['connect', 'expiry', 'details', 'confirm'];
@@ -47,6 +52,11 @@ export function SendForm() {
   const [formState, setFormState] = useState<SendFormState>(INITIAL_STATE);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
+  // Fire on first render of the create-claim form (§4.2 of the analytics spec).
+  useEffect(() => {
+    analytics.sendFormViewed();
+  }, []);
+
   // Move focus to the step heading every time the step changes.
   useEffect(() => {
     headingRef.current?.focus();
@@ -55,7 +65,16 @@ export function SendForm() {
   function goNext() {
     const idx = STEP_ORDER.indexOf(step);
     const next = STEP_ORDER[idx + 1];
-    if (next) setStep(next);
+    if (!next) return;
+    if (step === 'details') {
+      analytics.sendFormCompleted({
+        assetType: formState.assetCode,
+        expiryDays: formState.expiresInHours / 24,
+        hasRecipientName: Boolean(formState.recipientName),
+        hasMessage: Boolean(formState.memo),
+      });
+    }
+    setStep(next);
   }
 
   function goBack() {
@@ -71,7 +90,7 @@ export function SendForm() {
   return (
     <div className="space-y-6">
       {/* Step indicator */}
-      <nav aria-label="Send form progress">
+      <nav aria-label="Create ephemeral account progress">
         <ol className="flex gap-2" role="list">
           {STEP_ORDER.map((s, i) => {
             const isCurrent = s === step;
@@ -79,7 +98,7 @@ export function SendForm() {
             return (
               <li key={s} className="flex items-center gap-2">
                 {i > 0 && (
-                  <span aria-hidden="true" className="text-slate-300">
+                  <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
                     /
                   </span>
                 )}
@@ -87,10 +106,10 @@ export function SendForm() {
                   aria-current={isCurrent ? 'step' : undefined}
                   className={`text-xs font-medium ${
                     isCurrent
-                      ? 'text-slate-900'
+                      ? 'text-slate-900 dark:text-slate-100'
                       : isDone
-                        ? 'text-green-600'
-                        : 'text-slate-400'
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   {i + 1}. {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -107,7 +126,7 @@ export function SendForm() {
       <h2
         ref={headingRef}
         tabIndex={-1}
-        className="text-xl font-semibold text-slate-900 focus:outline-none"
+        className="text-xl font-semibold text-slate-900 focus:outline-none dark:text-slate-100"
       >
         {STEP_LABELS[step]}
       </h2>
@@ -138,9 +157,7 @@ export function SendForm() {
           onNext={goNext}
         />
       )}
-      {step === 'confirm' && (
-        <ConfirmStep state={formState} onBack={goBack} />
-      )}
+      {step === 'confirm' && <ConfirmStep state={formState} onBack={goBack} />}
     </div>
   );
 }

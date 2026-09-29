@@ -47,6 +47,7 @@
 - [ ] I have updated the documentation to reflect these changes.
 - [ ] My changes do not generate new warnings or errors.
 - [ ] I have verified that new dependencies are necessary and secure.
+- [ ] (If adding or updating a tracked analytics event) I have read and updated `docs/analytics-spec.md` first, per the [review-analytics-spec-before-new-event.md](../bridgelet-product-audit/runbooks/review-analytics-spec-before-new-event.md) runbook.
 - [ ] (If Smart Contract) I have verified gas usage and storage footprints are optimized.
 
 ---

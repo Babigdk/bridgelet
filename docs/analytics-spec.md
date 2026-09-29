@@ -5,6 +5,8 @@
 **Created:** March 2026
 **Based On:** `bridgelet-frd-ui-ux.md`, `ROADMAP.md`, `FRONTEND_TECHNICAL_SPEC.md`
 
+> **Implementation status:** Implementation compliance has **not** been verified. Treat this document as the intended design for Bridgelet's analytics instrumentation, not as a source of truth. See `bridgelet-product-audit/postmortems/analytics-spec-vs-implementation-unverified.md`.
+
 ---
 
 ## Table of Contents
@@ -702,6 +704,10 @@ Claim Succeeded          (Recipient Claim Funnel)
 
 ### 8.1 Core KPIs
 
+> **Query definitions:** executable query shapes for each KPI below,
+> their join keys, and per-KPI readiness status are maintained in
+> `docs/analytics-kpi-definitions.md`.
+
 ---
 
 #### Claim Conversion Rate (CCR)
@@ -793,6 +799,14 @@ For each share_method in {sms, email, whatsapp, qr_code, copy_only}:
 #### Recipient Entry Channel Distribution
 
 Breakdown of channels through which recipients open claim links.
+
+> **Readiness: blocked.** The web client emits `Claim Page Opened` with the
+> documented `entry_channel` values, but this repository contains no query or
+> dashboard that computes the distribution below. The event payload tests only
+> verify emission; they do not verify the KPI against an event export. Do not
+> report this KPI until an aggregation query or dashboard is implemented and
+> its result has been checked against the event data. See
+> `bridgelet-product-audit/postmortems/analytics-spec-vs-implementation-unverified.md`.
 
 ```
 For each entry_channel in {sms, email, whatsapp, direct, unknown}:

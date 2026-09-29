@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RateLimitBanner } from '@/components/rate-limit-banner';
 import { RateLimitError } from '@/lib/api/client';
 import { ChainSelector } from '@/components/chain-selector';
 import { AccountStatus } from '@/lib/api/types';
+import { analytics, type ValidationError } from '@/lib/analytics';
 
 /**
  * ClaimStatus mirrors the backend's real AccountStatus enum instead of a
@@ -15,6 +16,8 @@ import { AccountStatus } from '@/lib/api/types';
 export type ClaimStatus = AccountStatus;
 
 export interface ClaimStatusCardProps {
+  /** Claim token, surfaced as `claim_id` in analytics events. */
+  claimId?: string;
   /** Current lifecycle status of the account, as returned by the backend. */
   status: ClaimStatus;
   /** Payment amount in stroops (1 XLM = 10_000_000). Required for `pending_claim`. */
@@ -120,7 +123,19 @@ function StatusBadge({ status }: { status: ClaimStatus }) {
 
 // ─── State panels ─────────────────────────────────────────────────────────────
 
+/**
+ * Maps a failing address to the §5.2 `validation_error` reason. The live
+ * `isValidAddress` regex is the authority; the reason is derived from which
+ * aspect of it failed.
+ */
+function deriveValidationError(address: string): ValidationError {
+  if (address.charAt(0) !== 'G') return 'invalid_prefix';
+  if (address.length !== 56) return 'invalid_length';
+  return 'invalid_checksum';
+}
+
 function AvailablePanel({
+  claimId,
   amountStroops,
   assetCode,
   expiresAt,
@@ -129,22 +144,83 @@ function AvailablePanel({
   sweepNote,
 }: Pick<
   ClaimStatusCardProps,
-  'amountStroops' | 'assetCode' | 'expiresAt' | 'memo' | 'onClaim' | 'sweepNote'
+  'claimId' | 'amountStroops' | 'assetCode' | 'expiresAt' | 'memo' | 'onClaim' | 'sweepNote'
 >) {
   const [claiming, setClaiming] = useState(false);
   const [done, setDone] = useState(false);
   const [rateLimit, setRateLimit] = useState<number | null | undefined>(undefined);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [destinationAddress, setDestinationAddress] = useState('');
+  // Counts claim attempts so Retry Clicked can report attempt_number.
+  const attemptNumberRef = useRef(0);
+  // Prevents Error Displayed from firing again if the user edits the address
+  // while an error is still showing.
+  const errorDisplayedRef = useRef(false);
+  const [attemptNumber, setAttemptNumber] = useState(0);
+  const wasInvalid = useRef(false);
 
   // Matches the backend's Stellar public key validation (StrKey ed25519 public keys).
   const isValidAddress = /^G[A-Z2-7]{55}$/.test(destinationAddress);
 
+  // §6 Error Displayed — fires once when claimError first appears.
+  useEffect(() => {
+    if (claimError && !errorDisplayedRef.current) {
+      errorDisplayedRef.current = true;
+      analytics.errorDisplayed({
+        journey: 'recipient',
+        claimId,
+        errorType: 'unknown',
+        errorCode: 'CLAIM_SUBMISSION_ERROR',
+        sourceScreen: 'claim_page',
+      });
+    }
+    if (!claimError) {
+      errorDisplayedRef.current = false;
+    }
+  }, [claimError, claimId]);
+
+  useEffect(() => {
+    const invalid = destinationAddress.length > 0 && !isValidAddress;
+    if (invalid && !wasInvalid.current) {
+      const next = attemptNumber + 1;
+      setAttemptNumber(next);
+      // Recipient submitted an address that failed client-side validation (§5.2).
+      analytics.walletAddressValidationFailed({
+        claimId,
+        validationError: deriveValidationError(destinationAddress),
+        attemptNumber: next,
+      });
+    }
+    wasInvalid.current = invalid;
+  }, [destinationAddress, isValidAddress, claimId, attemptNumber]);
+
   async function handleClaim() {
-    if (!isValidAddress) return;
+    if (!isValidAddress) {
+      // Wallet address fails client-side validation (§6 `invalid_wallet_address`).
+      analytics.errorDisplayed({
+        journey: 'recipient',
+        errorType: 'invalid_wallet_address',
+        errorCode: 'INVALID_ADDRESS',
+        sourceScreen: 'claim_landing',
+      });
+      return;
+    }
     setClaiming(true);
     setRateLimit(undefined);
+
+    // §6 Retry Clicked — fires when the user re-submits after seeing an error.
+    if (claimError) {
+      analytics.retryClicked({
+        journey: 'recipient',
+        claimId,
+        errorType: 'unknown',
+        attemptNumber: attemptNumberRef.current,
+      });
+    }
+
     setClaimError(null);
+    attemptNumberRef.current += 1;
+
     try {
       await onClaim?.(destinationAddress);
       setDone(true);
@@ -167,11 +243,11 @@ function AvailablePanel({
   if (done) {
     return (
       <div className="space-y-2">
-        <p role="status" className="text-sm font-medium text-green-700">
+        <p role="status" className="text-sm font-medium text-green-700 dark:text-green-400">
           Claim submitted! Check your wallet for the incoming transfer.
         </p>
         {sweepNote && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 dark:text-amber-300 dark:bg-amber-950 dark:border-amber-800">
             🛠 Dev note: {sweepNote}
           </p>
         )}
@@ -194,14 +270,14 @@ function AvailablePanel({
         </div>
         {expiresAt && (
           <div className="flex justify-between">
-            <dt className="font-medium text-slate-700">Expires</dt>
-            <dd className="text-slate-600">{formatExpiry(expiresAt)}</dd>
+            <dt className="font-medium text-slate-700 dark:text-slate-300">Expires</dt>
+            <dd className="text-slate-600 dark:text-slate-400">{formatExpiry(expiresAt)}</dd>
           </div>
         )}
         {memo && (
           <div className="flex justify-between">
-            <dt className="font-medium text-slate-700">Memo</dt>
-            <dd className="text-slate-600">{memo}</dd>
+            <dt className="font-medium text-slate-700 dark:text-slate-300">Memo</dt>
+            <dd className="text-slate-600 dark:text-slate-400">{memo}</dd>
           </div>
         )}
       </dl>
@@ -254,7 +330,7 @@ function AvailablePanel({
         <ChainSelector />
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Funds are held on-chain. Claiming transfers them directly to your Stellar wallet.
       </p>
     </div>
@@ -300,13 +376,28 @@ function ProcessingPanel({ status, sweepNote }: { status: ClaimStatus; sweepNote
   );
 }
 
-function ClaimedPanel({ sweepDestination }: { sweepDestination?: string }) {
+function ClaimedPanel({
+  claimId,
+  assetCode,
+  sweepDestination,
+  claimedByMe,
+}: Pick<ClaimStatusCardProps, 'claimId' | 'assetCode' | 'sweepDestination' | 'claimedByMe'>) {
+  // §5.4 Claim Success Viewed — fires once when this session's successful
+  // claim result is displayed. Guarded by claimedByMe to avoid firing when
+  // the panel shows because someone else already claimed.
+  useEffect(() => {
+    if (claimedByMe && claimId) {
+      analytics.claimSuccessViewed({ claimId, assetType: assetCode });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+      <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-950">
         <svg
           aria-hidden="true"
-          className="h-6 w-6 shrink-0 text-blue-500"
+          className="h-6 w-6 shrink-0 text-blue-500 dark:text-blue-400"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -319,10 +410,11 @@ function ClaimedPanel({ sweepDestination }: { sweepDestination?: string }) {
           />
         </svg>
         <div>
-          <p className="text-sm font-semibold text-blue-800">Payment already claimed</p>
+          <p className="text-sm font-semibold text-blue-800">{claimedByMe ? 'Payment claimed!' : 'Payment already claimed'}</p>
           <p className="text-xs text-blue-600 mt-0.5">
-            These funds have been transferred to the recipient&apos;s wallet. Each claim link can
-            only be used once.
+            {claimedByMe
+              ? 'The funds have been swept to your wallet.'
+              : 'These funds have been transferred to the recipient\u2019s wallet. Each claim link can only be used once.'}
           </p>
           {sweepDestination && (
             <p className="mt-1 break-all font-mono text-[10px] text-blue-500">
@@ -331,9 +423,42 @@ function ClaimedPanel({ sweepDestination }: { sweepDestination?: string }) {
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-500">
-        If you believe this is a mistake, contact the sender for a new payment link.
-      </p>
+
+      {claimedByMe && claimId && (
+        <div className="space-y-2">
+          {/* §5.4 Explorer Link Clicked — Stellar block explorer link */}
+          <a
+            href={`https://stellar.expert/explorer/testnet/tx/${claimId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() =>
+              analytics.explorerLinkClicked({
+                journey: 'recipient',
+                claimId,
+                sourceScreen: 'claim_success',
+              })
+            }
+            className="block text-center text-xs text-blue-600 underline underline-offset-2 hover:text-blue-800"
+          >
+            View transaction on Stellar Explorer ↗
+          </a>
+
+          {/* §5.4 Sender Signup CTA Clicked — viral growth loop */}
+          <a
+            href="/send"
+            onClick={() => analytics.senderSignupCtaClicked({ claimId })}
+            className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            Create your own payment link →
+          </a>
+        </div>
+      )}
+
+      {!claimedByMe && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          If you believe this is a mistake, contact the sender for a new payment link.
+        </p>
+      )}
     </div>
   );
 }
@@ -344,10 +469,10 @@ function ExpiredPanel({
 }: Pick<ClaimStatusCardProps, 'expiresAt' | 'supportEmail'>) {
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+      <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-950">
         <svg
           aria-hidden="true"
-          className="mt-0.5 h-5 w-5 shrink-0 text-red-500"
+          className="mt-0.5 h-5 w-5 shrink-0 text-red-500 dark:text-red-400"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -360,16 +485,18 @@ function ExpiredPanel({
           />
         </svg>
         <div>
-          <p className="text-sm font-semibold text-red-800">This claim link has expired</p>
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+            This claim link has expired
+          </p>
           {expiresAt && (
             <p className="text-xs text-red-600 mt-0.5">Expired on {formatExpiry(expiresAt)}.</p>
           )}
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        <p className="font-medium text-slate-800 mb-1">What to do next</p>
-        <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+        <p className="font-medium text-slate-800 mb-1 dark:text-slate-200">What to do next</p>
+        <ul className="list-disc list-inside space-y-1 text-xs text-slate-600 dark:text-slate-400">
           <li>Contact the sender and ask them to send a new payment link.</li>
           <li>Expired funds are automatically returned to the sender&apos;s wallet.</li>
           {supportEmail && (
@@ -377,7 +504,7 @@ function ExpiredPanel({
               Need help?{' '}
               <a
                 href={`mailto:${supportEmail}`}
-                className="underline underline-offset-2 hover:text-slate-900"
+                className="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-100"
               >
                 {supportEmail}
               </a>
@@ -439,6 +566,7 @@ function FailedPanel({ supportEmail }: Pick<ClaimStatusCardProps, 'supportEmail'
  * silent "unknown status" fallback.
  */
 export function ClaimStatusCard({
+  claimId,
   status,
   amountStroops,
   assetCode = 'XLM',
@@ -447,6 +575,7 @@ export function ClaimStatusCard({
   onClaim,
   sweepNote,
   supportEmail,
+  claimedByMe,
   sweepDestination,
 }: ClaimStatusCardProps) {
   return (
@@ -462,13 +591,14 @@ export function ClaimStatusCard({
         <StatusBadge status={status} />
       </header>
 
-      <hr className="border-slate-100" />
+      <hr className="border-slate-100 dark:border-slate-800" />
 
       {(status === AccountStatus.INITIALIZING || status === AccountStatus.PENDING_PAYMENT) && (
         <NotReadyPanel status={status} />
       )}
       {status === AccountStatus.PENDING_CLAIM && (
         <AvailablePanel
+          claimId={claimId}
           amountStroops={amountStroops}
           assetCode={assetCode}
           expiresAt={expiresAt}
@@ -480,7 +610,14 @@ export function ClaimStatusCard({
       {(status === AccountStatus.CLAIMING || status === AccountStatus.PARTIAL_SWEEP) && (
         <ProcessingPanel status={status} sweepNote={sweepNote} />
       )}
-      {status === AccountStatus.CLAIMED && <ClaimedPanel sweepDestination={sweepDestination} />}
+      {status === AccountStatus.CLAIMED && (
+        <ClaimedPanel
+          claimId={claimId}
+          assetCode={assetCode}
+          claimedByMe={claimedByMe}
+          sweepDestination={sweepDestination}
+        />
+      )}
       {status === AccountStatus.EXPIRED && (
         <ExpiredPanel expiresAt={expiresAt} supportEmail={supportEmail} />
       )}
