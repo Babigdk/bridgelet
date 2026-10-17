@@ -20,6 +20,7 @@
 7. [Conversion Funnel Definitions](#7-conversion-funnel-definitions)
 8. [Business Metrics & KPI Definitions](#8-business-metrics--kpi-definitions)
 9. [Implementation Notes](#9-implementation-notes)
+10. [Mobile App Extension](#10-mobile-app-extension)
 
 ---
 
@@ -1012,6 +1013,74 @@ Where server-side events are used, they should be enriched with client context (
 ### 9.5 Do Not Track
 
 Respect browser-level `DNT` headers. If `DNT: 1`, suppress all analytics events. This is especially important for the recipient flow, where the user may not have any prior relationship with Bridgelet.
+
+---
+
+## 10. Mobile App Extension
+
+The Expo app (`mobile/`) tracks the same event names as the web app wherever
+the two flows overlap, so a single funnel spans both platforms. This section
+records the parts that are genuinely different.
+
+### 10.1 Base payload
+
+Every mobile event carries these fields in addition to the event's own
+parameters:
+
+| Field | Type | Value |
+|---|---|---|
+| `journey` | string | `"sender"`, `"recipient"` or `"shared"` — the same vocabulary as §3.1 |
+| `timestamp` | string | ISO 8601 |
+| `platform` | string | `"ios"` or `"android"` |
+| `app_version` | string | From the Expo config, or `"unknown"` |
+| `device_type` | string | Always `"mobile"` on this platform |
+| `anonymous_id` | string | UUID minted once per install |
+| `session_id` | string | UUID regenerated on every cold start |
+
+The `platform` field is what makes cross-platform reporting possible: filter on
+`platform: "web"` for web-only numbers, or group by it to compare the two.
+
+**Fields that do not apply on mobile.** `user_agent`, `referrer` and `network`
+have no mobile equivalent — there is no user-agent string to read and no
+per-request referrer — so they are omitted rather than sent empty. `device_type`
+is constant rather than derived. `anonymous_id` is stored in AsyncStorage, the
+app-scoped sandboxed equivalent of `localStorage`; it is deliberately **not** in
+`expo-secure-store`, which is for credentials and this is not one.
+
+### 10.2 Mobile-only events
+
+These interactions exist only in the app. They are named with the same
+`Noun Verb` convention as §2 and are additive to the catalog above.
+
+| Event | Journey | Fired when |
+|---|---|---|
+| `Screen Viewed` | `shared` | A top-level screen is opened. `screen` names it (`home_index`, `onboarding`, `claim_token_entry`, `claim_success`, `sender_dashboard`, `send_create`, `security_setup`) |
+| `Crash Reported` | `shared` | The root `ErrorBoundary` catches a render-time crash. Carries `error_name`, `error_code`, `component` (top frame of the component stack) and `recoverable` |
+| `Notification Opened` | `shared` | The recipient opens one notification. Carries `notification_type` (`payment`, `message`, `general`, `unknown`) — never the notification id |
+| `Notifications Cleared` | `shared` | Unread count reaches zero. Carries `source` (`read_all` / `last_read`) and `unread_before` |
+| `Language Detected` | `shared` | A message language is determined. Carries `language`, `detection_source` (`auto` / `manual_override`) and `confidence` |
+| `Theme Changed` | `shared` | The theme preference changes. Carries `from` and `to` (`light` / `dark` / `system`) |
+
+`Crash Reported` is deliberately **not** `Error Displayed`. The §6 event is for
+expected, in-flow failures the app can explain to the user (invalid token,
+network unreachable); a caught crash is a defect, and merging the two makes an
+unexpected crash invisible in an error rate. The error *message* is not sent —
+it can contain whatever was in scope at the throw site, including user input —
+so the error class name plus the topmost component are used instead.
+
+### 10.3 Environment and delivery
+
+- Events are dispatched only when `EXPO_PUBLIC_ENV` is not `development` **and**
+  `EXPO_PUBLIC_ANALYTICS_ENDPOINT` is configured. A development build logs
+  instead of sending; a production build with no endpoint configured warns once
+  rather than discarding every event silently.
+- Development status comes from `EXPO_PUBLIC_ENV`, the same signal
+  `mobile/services/logger` gates on. It must not be derived from
+  `Constants.appOwnership`: that is `expo` for every Expo Go session, including
+  QA passes run against a release branch, which would downgrade a real build to
+  console-only output and make QA event volume misleadingly low.
+- `track()` never throws and never blocks the caller. A failed send is logged
+  and dropped; telemetry must not be able to break a claim.
 
 ---
 
