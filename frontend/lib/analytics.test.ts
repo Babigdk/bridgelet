@@ -2014,3 +2014,39 @@ describe('payload verification', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+// ── Claim Link Shared (#784) ─────────────────────────────────────────────────
+//
+// Issue #784 asked for a `track('Claim Link Shared', …)` call at the point the
+// sender actively shares the claim link. The emitter and its WhatsApp call site
+// were already delivered by PR #751 (see
+// `bridgelet-product-audit/postmortems/issue-784-claim-link-shared-already-implemented.md`).
+// This block locks in the §4.4 payload so it cannot silently regress.
+describe('analytics.claimLinkShared (§4.4)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    delete (window as unknown as { plausible?: unknown }).plausible;
+  });
+
+  it.each(['sms', 'email', 'whatsapp', 'qr_code'] as const)(
+    'emits Claim Link Shared with share_method "%s"',
+    (shareMethod) => {
+      (window as unknown as { plausible?: ReturnType<typeof plausibleMock> }).plausible =
+        plausibleMock();
+
+      analytics.claimLinkShared({ claimId: 'acct_123', shareMethod });
+
+      const call = (window as unknown as { plausible: ReturnType<typeof plausibleMock> })
+        .plausible.mock.calls[0]!;
+      expect(call[0]).toBe('Claim Link Shared');
+      expect(call[1].props).toEqual(
+        expect.objectContaining({
+          journey: 'sender',
+          claim_id: 'acct_123',
+          share_method: shareMethod,
+        }),
+      );
+    },
+  );
+});
