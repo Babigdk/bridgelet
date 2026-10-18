@@ -14,6 +14,7 @@
 | Spec Version | Date | Changes | Compatible App Versions |
 |--------------|------|---------|-------------------------|
 | `1.0.0` | 2026-03-15 | Initial baseline analytics specification defining sender and recipient journey events, funnels, KPIs, and base payload. Added `analytics_spec_version` tracking field. | `0.1.0+` |
+| `1.0.1` | 2026-10-18 | Added `"qr_scan"` entry channel to `Claim Page Opened` and Recipient Entry Channel Distribution for mobile QR scan entry (#704). | `0.1.0+` |
 
 ---
 
@@ -62,6 +63,12 @@ If integrator usage analytics later become a product goal, extend this spec rath
 - Add an `integrator` value to the `journey` table in section 2.3 and a third row to the journey table above.
 - Define the events as server-side only, named under the section 2.1 rules, with a server-side base payload that drops the browser fields.
 - Keep secrets out of payloads. A webhook's signing `secret` must never be recorded, and the target `url` should be left out or reduced to its host.
+
+### Mobile Feature Note: QR Code Scanning & Recipient Entry Channel
+
+The mobile client architecture tracks recipient claims and deep linking. While `ShareSheet.tsx` supports rendering a QR code on sender devices for offline/in-person transfer, dedicated in-app camera QR scanning (`QRCodeScanner.tsx`) represents a distinct physical onboarding path:
+- Once mobile QR scanning is integrated into the recipient flow, it maps to the recipient entry funnel via `Claim Page Opened` (with `entry_channel: "qr_scan"`) or a dedicated `QR Code Scanned` event.
+- This will directly feed the *Recipient Entry Channel Distribution* KPI (§8.2) alongside existing digital channels (`sms`, `email`, `whatsapp`, `direct`). See `bridgelet-product-audit/postmortems/issue-704-qr-code-scanner-analytics-evaluation.md` for full evaluation.
 
 ---
 
@@ -529,7 +536,7 @@ Fired immediately when a recipient opens a claim link. Fires before token verifi
 |----------|------|---------------------|
 | `journey` | string | `"recipient"` |
 | `claim_id` | string | Extracted from URL token |
-| `entry_channel` | string | Best-guess referral channel: `"sms"`, `"email"`, `"whatsapp"`, `"direct"`, `"unknown"` |
+| `entry_channel` | string | Best-guess referral channel: `"sms"`, `"email"`, `"whatsapp"`, `"direct"`, `"qr_scan"`, `"unknown"` |
 | `is_returning_visit` | boolean | `false` on the first `Claim Page Opened` recorded for this `anonymous_id`; `true` when the same `anonymous_id` has already fired `Claim Page Opened` before (any claim link) |
 
 **`is_returning_visit` and how it is derived**
@@ -1011,7 +1018,7 @@ Breakdown of channels through which recipients open claim links.
 > `bridgelet-product-audit/postmortems/analytics-spec-vs-implementation-unverified.md`.
 
 ```
-For each entry_channel in {sms, email, whatsapp, direct, unknown}:
+For each entry_channel in {sms, email, whatsapp, direct, qr_scan, unknown}:
   % = (Claim Page Opened events with entry_channel)
       / (total Claim Page Opened events)
       × 100
