@@ -43,6 +43,7 @@ We are currently focused on delivering the Minimum Viable Product (MVP) which al
   - [ ] Release `bridgelet-ui` reference implementation (Next.js)
   - [x] **Mobile Client (`bridgelet-mobile`)**: React Native / Expo native app architecture, SDK API client, test suite, and CI coverage
   - [ ] **Analytics instrumentation (frontend + mobile)**: Implement spec'd event tracking (`docs/analytics-spec.md`) across sender and recipient funnels with consent gating and privacy controls
+  - [ ] **Language detection & localization analytics**: Consider dedicated event category and telemetry for language auto-detection vs manual override if translation UX investment expands (#705)
   - [ ] Mobile NFC & QR claim code scanning integrations
 - **Network**
   - [ ] **Mainnet Beta Launch** (Limited pilot)

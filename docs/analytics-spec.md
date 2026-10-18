@@ -63,6 +63,12 @@ If integrator usage analytics later become a product goal, extend this spec rath
 - Define the events as server-side only, named under the section 2.1 rules, with a server-side base payload that drops the browser fields.
 - Keep secrets out of payloads. A webhook's signing `secret` must never be recorded, and the target `url` should be left out or reduced to its host.
 
+### Out of Scope: Translation & Real-Time Language Detection (Mobile)
+
+The mobile client contains translation caching and real-time input language detection features (`mobile/app/src/features/translate/languageDetection.ts`, `useLanguageDetection.ts`, `LanguageInput.tsx`). In the current v1.0.0 specification:
+- Language detection and manual language overrides are uninstrumented and excluded from the core transaction funnels (Sender and Recipient funnels).
+- If translation and real-time language detection become a core UX investment in future releases, a dedicated event category (e.g., `Language Detected`, `Language Overridden`) should be introduced in a future specification revision along with relevant payload properties (`detected_language`, `confidence`, `override_language`, `detection_source`) and privacy review (ensuring raw input text is never logged).
+
 ---
 
 ## 2. Event Naming Conventions
