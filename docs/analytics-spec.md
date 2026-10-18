@@ -14,6 +14,7 @@
 | Spec Version | Date | Changes | Compatible App Versions |
 |--------------|------|---------|-------------------------|
 | `1.0.0` | 2026-03-15 | Initial baseline analytics specification defining sender and recipient journey events, funnels, KPIs, and base payload. Added `analytics_spec_version` tracking field. | `0.1.0+` |
+| `1.0.1` | 2026-10-18 | Document explicit drop-off measurement methodology in §7.1 and note absence of explicit abandonment events (#702). | `0.1.0+` |
 
 ---
 
@@ -196,6 +197,8 @@ Fired on the sender's first interaction with any field in the Create Claim form.
 | `journey` | string | `"sender"` |
 | `first_field` | string | The field first interacted with: `"amount"`, `"asset"`, `"recipient_name"`, `"message"`, `"expiration"` |
 
+> **Funnel note (§7.1):** This event marks the start of the sender form (Stage 2). If the user leaves before completing the form, partial abandonment is measured by the absence of `Send Form Completed` within the session window; no explicit "abandonment" event is fired. Granular drop-off analysis can be performed by tracking intermediate `Send Form Field Changed` events.
+
 ---
 
 #### `Send Form Field Changed`
@@ -222,6 +225,8 @@ Fired when the sender clicks "Continue" and the form passes client-side validati
 | `expiry_days` | number \| null | Selected expiration |
 | `has_recipient_name` | boolean | Whether the optional recipient name was provided |
 | `has_message` | boolean | Whether the optional message was provided |
+
+> **Funnel note (§7.1):** This event marks successful completion of the form (Stage 3). The Stage 2 drop-off metric (`% of form starters who complete it`) is computed as the ratio of sessions containing `Send Form Completed` to those containing `Send Form Started`.
 
 ---
 
@@ -852,6 +857,21 @@ Claim Link Shared        ← activation milestone
 | 5 | `Payment Confirmed` | % who sign the transaction |
 | 6 | `Payment Created` | % confirmed → on-chain success |
 | 7 | `Claim Link Shared` | % who actively share (vs. just copy) |
+
+#### Funnel Drop-off & Partial Abandonment Measurement Methodology
+
+A common question when designing funnel queries and dashboards is how partial form abandonment (e.g. a user who triggers `Send Form Started` by focusing an input field, but navigates away or closes the browser tab before clicking "Continue" to trigger `Send Form Completed`) is captured.
+
+**Intentional Design: Drop-off is measured purely as the absence of the next funnel milestone within an attribution window.**
+
+1. **No Explicit "Form Abandoned" Event**:
+   - There is deliberately no client-side `Send Form Abandoned` or `beforeunload` heartbeat event. Browser lifecycle events (`beforeunload`, `pagehide`) are notoriously unreliable across modern mobile and desktop browsers (often throttled or dropped) and introduce phantom signals on tab switches or reloads.
+2. **Dashboard & Query Computation**:
+   - In downstream analytics tools (Mixpanel, PostHog, Amplitude, SQL warehouse), stage 2 to stage 3 drop-off is calculated as:
+     $$\text{Stage 2 Drop-off \%} = 100\% - \left( \frac{\text{Sessions/Users with } \texttt{Send Form Completed}}{\text{Sessions/Users with } \texttt{Send Form Started}} \times 100\% \right)$$
+   - Both events carry the base payload (§3.1) with matching `session_id` and `anonymous_id`. The drop-off is evaluated over a standard session duration or attribution conversion window (e.g., 30 minutes to 24 hours).
+3. **Granular Friction Diagnosis via Field Changes**:
+   - To pinpoint *where* users abandon without needing an artificial timeout event, §4.2 provides `Send Form Field Changed` (`field_name: "amount" | "asset" | "expiration" | "recipient_name" | "message"`). By inspecting the last `Send Form Field Changed` emitted prior to session termination, teams can identify specific input friction points (e.g., users dropping off after editing `expiration`).
 
 ---
 
