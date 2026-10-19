@@ -44,7 +44,7 @@ We are currently focused on delivering the Minimum Viable Product (MVP) which al
   - [x] **Mobile Client (`bridgelet-mobile`)**: React Native / Expo native app architecture, SDK API client, test suite, and CI coverage
   - [ ] **Analytics instrumentation (frontend + mobile)**: Implement spec'd event tracking (`docs/analytics-spec.md`) across sender and recipient funnels with consent gating and privacy controls
   - [ ] **Language detection & localization analytics**: Consider dedicated event category and telemetry for language auto-detection vs manual override if translation UX investment expands (#705)
-  - [ ] Mobile NFC & QR claim code scanning integrations
+  - [ ] **Mobile NFC & QR claim code scanning integrations**: Implement in-app scanner (`QRCodeScanner.tsx`) with entry telemetry (`entry_channel: "qr_scan"` and/or `QR Code Scanned`) feeding Recipient Entry Channel Distribution (#704)
 - **Network**
   - [ ] **Mainnet Beta Launch** (Limited pilot)
 
