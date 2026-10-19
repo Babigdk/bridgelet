@@ -14,6 +14,8 @@
 | Spec Version | Date | Changes | Compatible App Versions |
 |--------------|------|---------|-------------------------|
 | `1.0.0` | 2026-03-15 | Initial baseline analytics specification defining sender and recipient journey events, funnels, KPIs, and base payload. Added `analytics_spec_version` tracking field. | `0.1.0+` |
+| `1.0.1` | 2026-10-18 | Document explicit drop-off measurement methodology in §7.1 and note absence of explicit abandonment events (#702). | `0.1.0+` |
+| `1.0.2` | 2026-10-18 | Added `"qr_scan"` entry channel to `Claim Page Opened` and Recipient Entry Channel Distribution for mobile QR scan entry (#704). | `0.1.0+` |
 
 ---
 
@@ -28,6 +30,7 @@
 7. [Conversion Funnel Definitions](#7-conversion-funnel-definitions)
 8. [Business Metrics & KPI Definitions](#8-business-metrics--kpi-definitions)
 9. [Implementation Notes](#9-implementation-notes)
+10. [Mobile App Extension](#10-mobile-app-extension)
 
 ---
 
@@ -68,6 +71,18 @@ If integrator usage analytics later become a product goal, extend this spec rath
 The mobile application prototype includes mock notifications and tab badge rendering (`mobile/app/src/hooks/useNotificationBadge.ts`, `mobile/app/src/store/notificationStore.ts`, `mobile/app/(tabs)/notifications.tsx`). In the current v1.0.0 specification:
 - Mobile push notifications, in-app notification badge counts, and notification list interactions are not instrumented and are excluded from the baseline Sender and Recipient funnels.
 - If push notifications and alert feeds are developed to re-engage senders (e.g., payment claimed or expired alerts) or recipients (claim reminders), a dedicated event category (`Notification Received`, `Notification Opened`, `Notification Cleared`) should be introduced in a future specification revision along with attribution parameters (`notification_id`, `notification_type`, `action_taken`) and funnel attribution hooks (§7).
+
+### Mobile Feature Note: QR Code Scanning & Recipient Entry Channel
+
+The mobile client architecture tracks recipient claims and deep linking. While `ShareSheet.tsx` supports rendering a QR code on sender devices for offline/in-person transfer, dedicated in-app camera QR scanning (`QRCodeScanner.tsx`) represents a distinct physical onboarding path:
+- Once mobile QR scanning is integrated into the recipient flow, it maps to the recipient entry funnel via `Claim Page Opened` (with `entry_channel: "qr_scan"`) or a dedicated `QR Code Scanned` event.
+- This will directly feed the *Recipient Entry Channel Distribution* KPI (§8.2) alongside existing digital channels (`sms`, `email`, `whatsapp`, `direct`). See `bridgelet-product-audit/postmortems/issue-704-qr-code-scanner-analytics-evaluation.md` for full evaluation.
+
+### Out of Scope: Translation & Real-Time Language Detection (Mobile)
+
+The mobile client contains translation caching and real-time input language detection features (`mobile/app/src/features/translate/languageDetection.ts`, `useLanguageDetection.ts`, `LanguageInput.tsx`). In the current v1.0.0 specification:
+- Language detection and manual language overrides are uninstrumented and excluded from the core transaction funnels (Sender and Recipient funnels).
+- If translation and real-time language detection become a core UX investment in future releases, a dedicated event category (e.g., `Language Detected`, `Language Overridden`) should be introduced in a future specification revision along with relevant payload properties (`detected_language`, `confidence`, `override_language`, `detection_source`) and privacy review (ensuring raw input text is never logged).
 
 ---
 
@@ -202,6 +217,8 @@ Fired on the sender's first interaction with any field in the Create Claim form.
 | `journey` | string | `"sender"` |
 | `first_field` | string | The field first interacted with: `"amount"`, `"asset"`, `"recipient_name"`, `"message"`, `"expiration"` |
 
+> **Funnel note (§7.1):** This event marks the start of the sender form (Stage 2). If the user leaves before completing the form, partial abandonment is measured by the absence of `Send Form Completed` within the session window; no explicit "abandonment" event is fired. Granular drop-off analysis can be performed by tracking intermediate `Send Form Field Changed` events.
+
 ---
 
 #### `Send Form Field Changed`
@@ -228,6 +245,8 @@ Fired when the sender clicks "Continue" and the form passes client-side validati
 | `expiry_days` | number \| null | Selected expiration |
 | `has_recipient_name` | boolean | Whether the optional recipient name was provided |
 | `has_message` | boolean | Whether the optional message was provided |
+
+> **Funnel note (§7.1):** This event marks successful completion of the form (Stage 3). The Stage 2 drop-off metric (`% of form starters who complete it`) is computed as the ratio of sessions containing `Send Form Completed` to those containing `Send Form Started`.
 
 ---
 
@@ -535,7 +554,7 @@ Fired immediately when a recipient opens a claim link. Fires before token verifi
 |----------|------|---------------------|
 | `journey` | string | `"recipient"` |
 | `claim_id` | string | Extracted from URL token |
-| `entry_channel` | string | Best-guess referral channel: `"sms"`, `"email"`, `"whatsapp"`, `"direct"`, `"unknown"` |
+| `entry_channel` | string | Best-guess referral channel: `"sms"`, `"email"`, `"whatsapp"`, `"direct"`, `"qr_scan"`, `"unknown"` |
 | `is_returning_visit` | boolean | `false` on the first `Claim Page Opened` recorded for this `anonymous_id`; `true` when the same `anonymous_id` has already fired `Claim Page Opened` before (any claim link) |
 
 **`is_returning_visit` and how it is derived**
@@ -859,6 +878,21 @@ Claim Link Shared        ← activation milestone
 | 6 | `Payment Created` | % confirmed → on-chain success |
 | 7 | `Claim Link Shared` | % who actively share (vs. just copy) |
 
+#### Funnel Drop-off & Partial Abandonment Measurement Methodology
+
+A common question when designing funnel queries and dashboards is how partial form abandonment (e.g. a user who triggers `Send Form Started` by focusing an input field, but navigates away or closes the browser tab before clicking "Continue" to trigger `Send Form Completed`) is captured.
+
+**Intentional Design: Drop-off is measured purely as the absence of the next funnel milestone within an attribution window.**
+
+1. **No Explicit "Form Abandoned" Event**:
+   - There is deliberately no client-side `Send Form Abandoned` or `beforeunload` heartbeat event. Browser lifecycle events (`beforeunload`, `pagehide`) are notoriously unreliable across modern mobile and desktop browsers (often throttled or dropped) and introduce phantom signals on tab switches or reloads.
+2. **Dashboard & Query Computation**:
+   - In downstream analytics tools (Mixpanel, PostHog, Amplitude, SQL warehouse), stage 2 to stage 3 drop-off is calculated as:
+     $$\text{Stage 2 Drop-off \%} = 100\% - \left( \frac{\text{Sessions/Users with } \texttt{Send Form Completed}}{\text{Sessions/Users with } \texttt{Send Form Started}} \times 100\% \right)$$
+   - Both events carry the base payload (§3.1) with matching `session_id` and `anonymous_id`. The drop-off is evaluated over a standard session duration or attribution conversion window (e.g., 30 minutes to 24 hours).
+3. **Granular Friction Diagnosis via Field Changes**:
+   - To pinpoint *where* users abandon without needing an artificial timeout event, §4.2 provides `Send Form Field Changed` (`field_name: "amount" | "asset" | "expiration" | "recipient_name" | "message"`). By inspecting the last `Send Form Field Changed` emitted prior to session termination, teams can identify specific input friction points (e.g., users dropping off after editing `expiration`).
+
 ---
 
 ### 7.2 Recipient Claim Funnel
@@ -1017,7 +1051,7 @@ Breakdown of channels through which recipients open claim links.
 > `bridgelet-product-audit/postmortems/analytics-spec-vs-implementation-unverified.md`.
 
 ```
-For each entry_channel in {sms, email, whatsapp, direct, unknown}:
+For each entry_channel in {sms, email, whatsapp, direct, qr_scan, unknown}:
   % = (Claim Page Opened events with entry_channel)
       / (total Claim Page Opened events)
       × 100
@@ -1134,6 +1168,74 @@ Where server-side events are used, they should be enriched with client context (
 ### 9.5 Do Not Track
 
 Respect browser-level `DNT` headers. If `DNT: 1`, suppress all analytics events. This is especially important for the recipient flow, where the user may not have any prior relationship with Bridgelet.
+
+---
+
+## 10. Mobile App Extension
+
+The Expo app (`mobile/`) tracks the same event names as the web app wherever
+the two flows overlap, so a single funnel spans both platforms. This section
+records the parts that are genuinely different.
+
+### 10.1 Base payload
+
+Every mobile event carries these fields in addition to the event's own
+parameters:
+
+| Field | Type | Value |
+|---|---|---|
+| `journey` | string | `"sender"`, `"recipient"` or `"shared"` — the same vocabulary as §3.1 |
+| `timestamp` | string | ISO 8601 |
+| `platform` | string | `"ios"` or `"android"` |
+| `app_version` | string | From the Expo config, or `"unknown"` |
+| `device_type` | string | Always `"mobile"` on this platform |
+| `anonymous_id` | string | UUID minted once per install |
+| `session_id` | string | UUID regenerated on every cold start |
+
+The `platform` field is what makes cross-platform reporting possible: filter on
+`platform: "web"` for web-only numbers, or group by it to compare the two.
+
+**Fields that do not apply on mobile.** `user_agent`, `referrer` and `network`
+have no mobile equivalent — there is no user-agent string to read and no
+per-request referrer — so they are omitted rather than sent empty. `device_type`
+is constant rather than derived. `anonymous_id` is stored in AsyncStorage, the
+app-scoped sandboxed equivalent of `localStorage`; it is deliberately **not** in
+`expo-secure-store`, which is for credentials and this is not one.
+
+### 10.2 Mobile-only events
+
+These interactions exist only in the app. They are named with the same
+`Noun Verb` convention as §2 and are additive to the catalog above.
+
+| Event | Journey | Fired when |
+|---|---|---|
+| `Screen Viewed` | `shared` | A top-level screen is opened. `screen` names it (`home_index`, `onboarding`, `claim_token_entry`, `claim_success`, `sender_dashboard`, `send_create`, `security_setup`) |
+| `Crash Reported` | `shared` | The root `ErrorBoundary` catches a render-time crash. Carries `error_name`, `error_code`, `component` (top frame of the component stack) and `recoverable` |
+| `Notification Opened` | `shared` | The recipient opens one notification. Carries `notification_type` (`payment`, `message`, `general`, `unknown`) — never the notification id |
+| `Notifications Cleared` | `shared` | Unread count reaches zero. Carries `source` (`read_all` / `last_read`) and `unread_before` |
+| `Language Detected` | `shared` | A message language is determined. Carries `language`, `detection_source` (`auto` / `manual_override`) and `confidence` |
+| `Theme Changed` | `shared` | The theme preference changes. Carries `from` and `to` (`light` / `dark` / `system`) |
+
+`Crash Reported` is deliberately **not** `Error Displayed`. The §6 event is for
+expected, in-flow failures the app can explain to the user (invalid token,
+network unreachable); a caught crash is a defect, and merging the two makes an
+unexpected crash invisible in an error rate. The error *message* is not sent —
+it can contain whatever was in scope at the throw site, including user input —
+so the error class name plus the topmost component are used instead.
+
+### 10.3 Environment and delivery
+
+- Events are dispatched only when `EXPO_PUBLIC_ENV` is not `development` **and**
+  `EXPO_PUBLIC_ANALYTICS_ENDPOINT` is configured. A development build logs
+  instead of sending; a production build with no endpoint configured warns once
+  rather than discarding every event silently.
+- Development status comes from `EXPO_PUBLIC_ENV`, the same signal
+  `mobile/services/logger` gates on. It must not be derived from
+  `Constants.appOwnership`: that is `expo` for every Expo Go session, including
+  QA passes run against a release branch, which would downgrade a real build to
+  console-only output and make QA event volume misleadingly low.
+- `track()` never throws and never blocks the caller. A failed send is logged
+  and dropped; telemetry must not be able to break a claim.
 
 ---
 
